@@ -1,0 +1,16 @@
+
+*.pyc
+
+data/cities1000_multi_large.csv
+
+data/cities_test.csv
+
+data/output_guess.csv
+
+data/test_guess.csv
+
+data/test_guess1.csv
+
+guessCountry.py
+
+sttest.py
