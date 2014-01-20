@@ -22,6 +22,8 @@ from unicodeManager.reader import UnicodeReader
 from worldCountries import WorldCountries
 from blackList import BlackList
 
+this_dir, this_filename = os.path.split(__file__)
+DATA_PATH = os.path.join(this_dir, 'data')
 
 class WorldCities():
     
@@ -40,7 +42,7 @@ class WorldCities():
         
         # Load data
         # GeoNames list of cities: http://download.geonames.org/export/dump/
-        f = open(os.path.join(os.path.abspath('.'), 'data', 'cities1000.csv'), 'rb')
+        f = open(os.path.join(DATA_PATH, 'cities1000.csv'), 'rb')
         reader = UnicodeReader(f)
         
         for row in reader:

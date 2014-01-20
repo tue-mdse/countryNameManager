@@ -20,6 +20,8 @@ import os
 from unidecode import unidecode
 from unicodeManager.reader import UnicodeReader
 
+this_dir, this_filename = os.path.split(__file__)
+DATA_PATH = os.path.join(this_dir, 'data')
 
 class BrazilStates:
     def __init__(self):
@@ -28,7 +30,7 @@ class BrazilStates:
         self.abbrevsSet = set()
         
         # Load data
-        f = open(os.path.join(os.path.abspath('.'), 'data', 'brazilStates.csv'), 'rb')
+        f = open(os.path.join(DATA_PATH, 'brazilStates.csv'), 'rb')
         reader = UnicodeReader(f)
         header = reader.next()
         for row in reader:

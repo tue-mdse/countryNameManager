@@ -20,6 +20,8 @@ import os
 from unidecode import unidecode
 from unicodeManager.reader import UnicodeReader
 
+this_dir, this_filename = os.path.split(__file__)
+DATA_PATH = os.path.join(this_dir, 'data')
 
 class WorldCountries():
     def __init__(self):
@@ -29,7 +31,7 @@ class WorldCountries():
         self.tld2name = {}
 
         # The list of country names, alternative spellings, and 2-letter codes (TLDs)
-        f = open(os.path.join(os.path.abspath('.'), 'data', 'countries.csv'), 'rb')
+        f = open(os.path.join(DATA_PATH, 'countries.csv'), 'rb')
         reader = UnicodeReader(f)
         reader.next()
         for row in reader:

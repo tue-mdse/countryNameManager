@@ -19,6 +19,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>."""
 import os
 from unicodeManager.reader import UnicodeReader
 
+this_dir, this_filename = os.path.split(__file__)
+DATA_PATH = os.path.join(this_dir, 'data')
 
 class USAStates:
     def __init__(self):
@@ -27,7 +29,7 @@ class USAStates:
         self.abbrevsSet = set()
         
         # Load data
-        f = open(os.path.join(os.path.abspath('.'), 'data', 'usStates.csv'), 'rb')
+        f = open(os.path.join(DATA_PATH, 'usStates.csv'), 'rb')
         reader = UnicodeReader(f)
         for row in reader:
             name = row[0].lower().strip()
