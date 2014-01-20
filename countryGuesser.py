@@ -21,12 +21,15 @@ from time import clock
 from unidecode import unidecode
 import re
 import SuffixTree.SubstringDict
+from collections import Counter
 
 
 from usaStates import USAStates
+from brazilStates import BrazilStates
 from canadaProvinces import CanadaProvinces
 from worldCountries import WorldCountries
 from worldCities import WorldCities
+from postCodes import PostCodes
 
 
 
@@ -50,16 +53,37 @@ class CountryGuesser:
         self.MIN_POPULATION = 100000
         self.MIN_CITY_LENGTH = 4
         self.MIN_COUNTRY_LENGTH = 5
-        self.MIN_SUBSTRING_LENGTH = 5
+        
+        # Rule types
+        self.R_COUNTRY = 0
+        self.R_STATE = 1
+        self.R_BIG_CITY = 2
+        self.R_ANY_CITY = 3
+        self.R_POST_CODE = 4
+        self.R_TLD = 5
+        self.R_STATE_ABBREV = 6
+        
+        # Rule labels
+        self.rule_labels = {
+            self.R_COUNTRY:'Country',
+            self.R_STATE:'State',
+            self.R_BIG_CITY:'Big city',
+            self.R_ANY_CITY:'Any city',
+            self.R_POST_CODE:'Post code',
+            self.R_TLD:'TLD',
+            self.R_STATE_ABBREV:'State abbrev'
+        }
         
         # Loading data
         print 'Loading data'
         timing.log(clock())
         
         self.USAStates = USAStates()
+        self.BrazilStates = BrazilStates()
         self.CanadaProvinces = CanadaProvinces()
         self.WorldCountries = WorldCountries()
         self.WorldCities = WorldCities(self.MIN_CITY_LENGTH, self.MIN_POPULATION)
+        self.PostCodes = PostCodes()
         
         # Store the city names also as a suffix tree
         print 'Creating suffix trees for city names'
@@ -82,17 +106,21 @@ class CountryGuesser:
         m = re.search(r'\d+$', s)
         return m.group() if m else None
 
-    
+
+    '''Split a string into comma parts.'''
     def __commaParts(self, location_norm):
         return [p for p in [p.strip() for p in location_norm.split(',')] if len(p)]
     
     
+    '''Split a string into parts on any non-alphabetic character.'''
     def __parts(self, location_norm):
         return [p for p in re.split(r'[^A-Za-z]', location_norm) if len(p)]
     
     
+    '''Split a string into parts on any non-alphabetic character.
+    Substrings from the exceptions list do not get split.'''
     def __partsWithoutSplitting(self, location_norm, exceptions):
-        cpy_location_norm = location_norm[:]
+        cpy_location_norm = location_norm[:] #creates copy
         parts = []
         for word in exceptions:
             if word in location_norm:
@@ -100,16 +128,18 @@ class CountryGuesser:
                 cpy_location_norm=cpy_location_norm.replace(word, ' ')
         parts.extend( re.split(r'[^A-Za-z]', cpy_location_norm) )
         return [p for p in parts if len(p)]
-    
         
-    # Look for country names inside the string
+        
+    def __multiWords(self, strSet):
+        return [c for c in strSet if len(c.split())>1 or len(c.split('.'))>1]
+        
+    '''Look for country names inside the string.'''
     def __searchCountry(self, location_norm):
-        # Exclude names of US states or Canadian provinces
-        clear_countries = self.WorldCountries.namesSet.difference(self.USAStates.namesSet.union(self.CanadaProvinces.namesSet))
-        # Do not split multi-word country names if they appear as substrings
-        multiwords = [c for c in clear_countries if len(c.split())>1]
+        # Exclude names of US states (Georgia) or Canadian provinces
+        clear_countries = self.WorldCountries.namesSet#.difference(self.USAStates.namesSet.union(self.CanadaProvinces.namesSet))
         
-        # Compute parts
+        # Do not split multi-word country names if they appear as substrings
+        multiwords = self.__multiWords(clear_countries)
         parts = self.__partsWithoutSplitting(location_norm, multiwords)
                 
         # Look for occurrences of country names in the list of parts
@@ -117,42 +147,21 @@ class CountryGuesser:
         return set([self.WorldCountries.alternative2name[c] for c in clear_countries if c in parts])
         
         
-    def __searchUSAState(self, location_norm):
-        # Exclude names of countries or Canadian provinces
-        clear_states = self.USAStates.namesSet.difference(self.WorldCountries.namesSet.union(self.CanadaProvinces.namesSet))
-        # Do not split multi-word state names if they appear as substrings
-        multiwords = [c for c in clear_states if len(c.split())>1]
-        
-        # Compute parts
+    '''Search for names of states for a given country (USA, Canada, Brazil)'''
+    def __searchState(self, location_norm, namesSet):
+        multiwords = self.__multiWords(namesSet)
         parts = self.__partsWithoutSplitting(location_norm, multiwords)
-        
-        # Look for occurrences of country names in the list of parts
-        return set(parts).intersection(clear_states)
-        
-        
-    def __searchCanadaProvince(self, location_norm):
-        # Exclude names of countries or US states
-        clear_states = self.CanadaProvinces.namesSet.difference(self.WorldCountries.namesSet.union(self.USAStates.namesSet))
-        # Do not split multi-word state names if they appear as substrings
-        multiwords = [c for c in clear_states if len(c.split())>1]
-        
-        # Compute parts
-        parts = self.__partsWithoutSplitting(location_norm, multiwords)
-        
-        # Look for occurrences of country names in the list of parts
-        return set(parts).intersection(clear_states)
+        return set(parts).intersection(namesSet)
     
-    
-    def __searchUSAAbbrev(self, location_norm):
-        # Exclude TLDs or Canadian abbrevs
-        clear_abbrevs = self.USAStates.abbrevsSet.difference(self.WorldCountries.tldsSet.union(self.CanadaProvinces.abbrevsSet))
+        
+    '''Search for 2-letter state abbreviations for a given country (USA, Canada, Brazil)'''
+    def __searchStateAbbrevEnd(self, location_norm, abbrevsSet):
+        intersect = set()
         
         # Compute comma parts
         comma_parts = self.__commaParts(location_norm)
-        if len(comma_parts):
-            intersect = set(comma_parts).intersection(clear_abbrevs)
-            if len(intersect):
-                return intersect
+        if len(comma_parts) > 1:
+            intersect.update( set(comma_parts).intersection(abbrevsSet) )
             
             # Last comma part might be of the form:
             # 773 white road, bowdoinham, me 04008
@@ -161,54 +170,19 @@ class CountryGuesser:
             number = self.__get_trailing_number(last)
             if number is not None and len(number)==5:
                 # Look for USA state abbrev
-                parts = self.__partsWithoutSplitting(last, [])
-                return set(parts).intersection(self.USAStates.abbrevsSet)
+                parts = self.__parts(last)
+                intersect.update( set(parts).intersection(abbrevsSet) )
         
-        return set()
-    
+        # If there are no commas to split on, check last space part
+        elif len(comma_parts) == 1:
+            parts = self.__parts(location_norm)
+            if len(parts):
+                intersect.update( set([parts[-1]]).intersection(abbrevsSet))
         
-    def __searchUSAAbbrevApx(self, location_norm):
-        # Exclude TLDs or Canadian abbrevs
-        clear_abbrevs = self.USAStates.abbrevsSet.difference(self.WorldCountries.tldsSet.union(self.CanadaProvinces.abbrevsSet))
-        
-        # Compute parts
-        parts = self.__partsWithoutSplitting(location_norm, [])
-        if len(parts):
-            return set(parts).intersection(clear_abbrevs)
-        return set()
-    
-    
-    def __searchCanadaAbbrev(self, location_norm):
-        # Exclude TLDs or USA abbrevs
-        clear_abbrevs = self.CanadaProvinces.abbrevsSet.difference(self.WorldCountries.tldsSet.union(self.USAStates.abbrevsSet))
-        
-        # Compute comma parts
-        comma_parts = self.__commaParts(location_norm)
-        if len(comma_parts):
-            return set(comma_parts).intersection(clear_abbrevs)
-        return set()
-    
+        return intersect
 
-    def __searchCanadaAbbrevApx(self, location_norm):
-        # Exclude TLDs or USA abbrevs
-        clear_abbrevs = self.CanadaProvinces.abbrevsSet.difference(self.WorldCountries.tldsSet.union(self.USAStates.abbrevsSet))
-        
-        # Compute parts
-        parts = self.__partsWithoutSplitting(location_norm, [])
-        if len(parts):
-            return set(parts).intersection(clear_abbrevs)
-        return set()
-    
-    
-    def __searchTLD(self, location_norm):
-        candidates = set()
-        if len(location_norm) == 3 and location_norm[0] == '.':
-            code = location_norm[1:]
-            if self.WorldCountries.tld2name.has_key(code):
-                candidates.add(self.WorldCountries.tld2name[code])
-        return candidates
-        
-        
+
+    '''Search for names of big cities (>=MIN_POPULATION). If multiple, keep only the largest.'''
     def __searchLargeCity(self, location_norm):
         candidate_countries = set()
         # Compute parts
@@ -232,11 +206,15 @@ class CountryGuesser:
             pruned = removeSubstrings(candidates)
             
             for city in pruned:
-                for (c,_) in self.WorldCities.largeCity2countryPopulation[city]:
-                    candidate_countries.add(self.WorldCountries.alternative2name[c])
+                most_likely_country = sorted(self.WorldCities.largeCity2countryPopulation[city], key=lambda e:-e[1])[0]
+                candidate_countries.add(self.WorldCountries.alternative2name[most_likely_country[0]])
+#                for (c,_) in self.WorldCities.largeCity2countryPopulation[city]:
+#                    candidate_countries.add(self.WorldCountries.alternative2name[c])
+                    
         return candidate_countries
             
     
+    '''Search for names of any cities. Keep all results.'''
     def __searchAnyCity(self, location_norm):
         candidate_countries = set()
         # Compute parts
@@ -260,60 +238,151 @@ class CountryGuesser:
             pruned = removeSubstrings(candidates)
             
             for city in pruned:
+                where_is = set()
                 for (c,_) in self.WorldCities.city2countryPopulation[city]:
-                    candidate_countries.add(self.WorldCountries.alternative2name[c])
+                    where_is.add(self.WorldCountries.alternative2name[c])
+            
+                if self.WorldCountries.alternative2name['usa'] in where_is:
+                    # Check if last part is an abbreviation of a US state
+                    all_parts = self.__parts(location_norm)
+                    if all_parts[-1] in self.USAStates.abbrevsSet:
+                        where_is = [self.WorldCountries.alternative2name['usa']]
+                candidate_countries.update(where_is)
+                    
         return candidate_countries
         
         
+    '''Search for post codes for different countries.'''
+    def __searchPostCode(self, location_norm):
+        candidates = set()
+        for tld, rex in self.PostCodes.regex.iteritems():
+            m = rex.search(location_norm)
+            if m is not None:
+                candidates.add(self.WorldCountries.tld2name[tld])
+        return candidates
+    
+    
         
-    def guess(self, location):
-        # Transliterate / remove diacritics / convert to lower case
-        location_norm = unidecode(location).lower().strip()
-        
-        # Look for USA state abbrev as comma part
-        if len(self.__searchUSAAbbrev(location_norm)):
-            return [self.WorldCountries.alternative2name['usa']]
-        
-        # Look for Canada province abbrev as comma part
-        if len(self.__searchCanadaAbbrev(location_norm)):
-            return [self.WorldCountries.alternative2name['canada']]
+    def apply_rules(self, location_norm):
+        candidates = set()
         
         # Look for occurences of country names
         found_countries = self.__searchCountry(location_norm)
         if len(found_countries):
-            return sorted(found_countries)
+            candidates.update([(c, self.R_COUNTRY) for c in sorted(found_countries)])
 
-        # Look for US state names
-        if len(self.__searchUSAState(location_norm)):
-            return [self.WorldCountries.alternative2name['usa']]
-        
-        # Look for Canada province name
-        if len(self.__searchCanadaProvince(location_norm)):
-            return [self.WorldCountries.alternative2name['canada']]
+        # Look for state names (USA, Canada, Brazil)
+        # USA
+        states = self.USAStates.namesSet
+        if len(self.__searchState(location_norm, states)):
+            candidates.add((self.WorldCountries.alternative2name['usa'], self.R_STATE))
+        # Canada
+        states = self.CanadaProvinces.namesSet
+        if len(self.__searchState(location_norm, states)):
+            candidates.add((self.WorldCountries.alternative2name['canada'], self.R_STATE))
+        # Brazil
+        states = self.BrazilStates.namesSet
+        if len(self.__searchState(location_norm, states)):
+            candidates.add((self.WorldCountries.alternative2name['brazil'], self.R_STATE))
+
+        # Look for 2-letter state/country codes at the end of the string
+        # USA
+        abbrevs = self.USAStates.abbrevsSet
+        if len(self.__searchStateAbbrevEnd(location_norm, abbrevs)):
+            candidates.add((self.WorldCountries.alternative2name['usa'], self.R_STATE_ABBREV))
+        # Canada
+        abbrevs = self.CanadaProvinces.abbrevsSet
+        if len(self.__searchStateAbbrevEnd(location_norm, abbrevs)):
+            candidates.add((self.WorldCountries.alternative2name['canada'], self.R_STATE_ABBREV))
+        # Brazil
+        abbrevs = self.BrazilStates.abbrevsSet
+        if len(self.__searchStateAbbrevEnd(location_norm, abbrevs)):
+            candidates.add((self.WorldCountries.alternative2name['brazil'], self.R_STATE_ABBREV))
+        # Any country TLD
+        abbrevs = self.WorldCountries.tldsSet
+        matches = self.__searchStateAbbrevEnd(location_norm, abbrevs)
+        candidates.update([(self.WorldCountries.tld2name[c], self.R_TLD) for c in matches])
         
         # Look for large cities
         found_countries = self.__searchLargeCity(location_norm)
         if len(found_countries):
-            return sorted(found_countries)
+            candidates.update([(c, self.R_BIG_CITY) for c in sorted(found_countries)])
         
         # Look for other cities
         found_countries = self.__searchAnyCity(location_norm)
         if len(found_countries):
-            return sorted(found_countries)
+            candidates.update([(c, self.R_ANY_CITY) for c in sorted(found_countries)])
         
-        # Look for USA state abbrev anywhere
-        if len(self.__searchUSAAbbrev(location_norm)):
-            return [self.WorldCountries.alternative2name['usa']]
-        
-        # Look for Canada province abbrev anywhere
-        if len(self.__searchCanadaAbbrev(location_norm)):
-            return [self.WorldCountries.alternative2name['canada']]
-        
-        # Look for TLDs
-        found_countries = self.__searchTLD(location_norm)
+        # Look for post codes
+        found_countries = self.__searchPostCode(location_norm)
         if len(found_countries):
-            return sorted(found_countries)
+            candidates.update([(c, self.R_POST_CODE) for c in sorted(found_countries)])
         
+        return candidates
+    
+    
+    def guess(self, location):
+        # Transliterate / remove diacritics / convert to lower case
+        location_norm = unidecode(location).lower().strip()
+
+        candidates = self.apply_rules(location_norm)
+        
+        if len(candidates):
+            # Remove (c,ANY_CITY) if also (c,BIG_CITY)
+            remove = [(c,self.R_ANY_CITY) for (c,_) in candidates if (c,self.R_BIG_CITY) in candidates and (c,self.R_ANY_CITY) in candidates]
+            candidates.difference_update(remove)
+            
+            # Count the distinct countries. Only one country = easy guess
+            distinct_countries = set([c for (c,_) in candidates])
+            if len(distinct_countries) == 1:
+                return sorted(distinct_countries)
+            
+            # Simple majority vote: if multiple clues point to the same country, that's the country
+            results = [(c,self.rule_labels[r]) for (c,r) in candidates]
+            counter = Counter([elem[0] for elem in results])
+            max_count = max(counter.items(), key=lambda elem:elem[1])[1]
+            if max_count > 1:
+                countries = [c for c,v in counter.items() if v==max_count]
+                return sorted(countries)
+
+            # Big city > any city
+            na = len(set([c for (c,r) in candidates 
+                      if r != self.R_BIG_CITY 
+                      and r != self.R_ANY_CITY]))
+            if not na:
+                countries = set([c for (c,_) in candidates 
+                             if (c,self.R_BIG_CITY) in candidates])
+                if len(countries):
+                    return sorted(countries)
+            
+            # Country > anything else
+            countries = set([c for (c,_) in candidates 
+                         if (c,self.R_COUNTRY) in candidates])
+            if len(countries):
+                return list(countries)
+            
+            # State_abbrev & TLD => State_abbrev
+            na = len(set([c for (c,r) in candidates 
+                      if r != self.R_STATE_ABBREV 
+                      and r != self.R_TLD]))
+            if not na:
+                countries = set([c for (c,_) in candidates 
+                             if (c,self.R_STATE_ABBREV) in candidates])
+                if len(countries) == 1:
+                    return sorted(countries)
+
+            # State > any_city
+            na = len(set([c for (c,r) in candidates 
+                      if r != self.R_STATE 
+                      and r != self.R_ANY_CITY]))
+            if not na:
+                countries = set([c for (c,_) in candidates 
+                             if (c,self.R_STATE) in candidates])
+                if len(countries) == 1:
+                    return sorted(countries)
+            
+            print location_norm, '--', results, '--', counter
+            
         return [None]
         
         

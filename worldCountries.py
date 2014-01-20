@@ -35,7 +35,7 @@ class WorldCountries():
         for row in reader:
 #            cid = int(row[0])
             # The country name
-            name = row[1].lower().strip()
+            name = unidecode(row[1]).lower().strip()
             self.namesSet.add(name)
             self.alternative2name[name] = name
             

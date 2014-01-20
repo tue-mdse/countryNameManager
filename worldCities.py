@@ -20,16 +20,18 @@ import os
 from unidecode import unidecode
 from unicodeManager.reader import UnicodeReader
 from worldCountries import WorldCountries
+from blackList import BlackList
 
 
 class WorldCities():
+    
     def __init__(self, MIN_CITY_LENGTH=5, MIN_POPULATION=50000):
         self.MIN_CITY_LENGTH = MIN_CITY_LENGTH
         self.MIN_POPULATION = MIN_POPULATION
         
-        self.blackList = {
-            'home':1,
-        }
+        # Most likely, these do not refer to actual city names
+        self.blackList = BlackList().dict
+#        print self.blackList.keys()
 
         self.city2countryPopulation = {}
         self.largeCity2countryPopulation = {}
@@ -40,11 +42,13 @@ class WorldCities():
         # GeoNames list of cities: http://download.geonames.org/export/dump/
         f = open(os.path.join(os.path.abspath('.'), 'data', 'cities1000.csv'), 'rb')
         reader = UnicodeReader(f)
-
+        
         for row in reader:
             city = unidecode(row[2]).lower().strip()
             # Alternative names/spellings for the same city
-            alternatives = [unidecode(a).lower().strip() for a in row[3].split(',')]
+            alternatives = [a for a in [unidecode(a).lower().strip() for a in row[3].split(',')] 
+                            if len(a) >= self.MIN_CITY_LENGTH 
+                            and not self.blackList.has_key(a)]
             population = int(row[14])
             # Country 2-letter code
             code = row[8].lower()
@@ -57,12 +61,12 @@ class WorldCities():
                     # If necessary, add manually and rerun
                     print 'UNKNOWN CODE:', city, population, code
                     exit()
-            
+                    
                 self.city2countryPopulation.setdefault(city, set([(country, population)]))
                 self.city2countryPopulation[city].add((country, population))
                         
                 # Record same country for all alternative names of this city
-                for a in [a for a in alternatives if len(a) >= self.MIN_CITY_LENGTH and not self.blackList.has_key(a)]:
+                for a in alternatives:
                     self.city2countryPopulation.setdefault(a, set([(country, population)]))
                     self.city2countryPopulation[a].add((country, population))
         
@@ -76,12 +80,10 @@ class WorldCities():
                     self.largeCity2countryPopulation[city].add((country, population))
                         
                     # Record same country for all alternative names of this city
-                    for a in [a for a in alternatives if len(a) >= self.MIN_CITY_LENGTH]:
+                    for a in alternatives:
                         self.largeCity2countryPopulation.setdefault(a, set([(country, population)]))
                         self.largeCity2countryPopulation[a].add((country, population))
         f.close()
-        
-        
 
 
 if __name__=="__main__":
@@ -90,4 +92,3 @@ if __name__=="__main__":
     print
     print len(cities.largeCity2countryPopulation.keys()), 'world city names with population >=', cities.MIN_POPULATION
     print len(cities.city2countryPopulation.keys()), 'world city names'
-
