@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>."""
 
 import os
 from unidecode import unidecode
-from unicodeManager.reader import UnicodeReader
+from unicodeManager import UnicodeReader
 
 this_dir, this_filename = os.path.split(__file__)
 DATA_PATH = os.path.join(this_dir, 'data')
@@ -29,6 +29,7 @@ class WorldCountries():
         self.tldsSet = set()
         self.alternative2name = {}
         self.tld2name = {}
+        self.name2alternatives = {}
 
         # The list of country names, alternative spellings, and 2-letter codes (TLDs)
         f = open(os.path.join(DATA_PATH, 'countries.csv'), 'rb')
@@ -46,6 +47,10 @@ class WorldCountries():
             for a in alternatives:
                 self.alternative2name[a] = name
                 self.namesSet.add(a)
+                
+            allVariants = set(alternatives).union(set([name]))
+            for variant in allVariants:
+                self.name2alternatives[variant] = allVariants
                 
             # The 2-letter codes (TLDs)
             codes = [t.lower().strip() for t in row[4].split(',')]

@@ -17,7 +17,7 @@ You should have received a copy of the GNU Lesser General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>."""
 
 import os
-from unicodeManager.reader import UnicodeReader
+from unicodeManager import UnicodeReader
 
 this_dir, this_filename = os.path.split(__file__)
 DATA_PATH = os.path.join(this_dir, 'data')

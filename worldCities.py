@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>."""
 
 import os
 from unidecode import unidecode
-from unicodeManager.reader import UnicodeReader
+from unicodeManager import UnicodeReader
 from worldCountries import WorldCountries
 from blackList import BlackList
 
