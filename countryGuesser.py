@@ -75,8 +75,8 @@ class CountryGuesser:
         }
         
         # Loading data
-        print 'Loading data'
-        timing.log(clock())
+        print "Loading data"
+        ##timing.log(clock())
         
         self.USAStates = USAStates()
         self.BrazilStates = BrazilStates()
@@ -87,7 +87,7 @@ class CountryGuesser:
         
         # Store the city names also as a suffix tree
         print 'Creating suffix trees for city names'
-        timing.log(clock())
+        ##timing.log(clock())
         
         # 1) Large cities
         self.stdWorldCitiesLarge = SuffixTree.SubstringDict()
@@ -99,7 +99,7 @@ class CountryGuesser:
             self.stdWorldCitiesAll[city] = city
 
         print 'Done initialising'
-        timing.log(clock())
+        #timing.log(clock())
         
     
     def __get_trailing_number(self, s):
